@@ -24,6 +24,10 @@ spec:
             - everysec
             - --save
             - ""
+            - --maxmemory
+            - 768mb
+            - --maxmemory-policy
+            - allkeys-lru
           ports:
             - containerPort: 6379
               name: redis
@@ -62,4 +66,4 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 1Gi
+            storage: 10Gi

@@ -7,12 +7,24 @@ spec:
     spec:
       containers:
         - name: redis
+          command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --save
+            - ""
+            - --maxmemory
+            - 400mb
+            - --maxmemory-policy
+            - allkeys-lru
           # Reduced resource limits for dev environment
           # Redis is used for caching/queuing - lower requirements acceptable for dev
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "100m"
-            limits:
               memory: "512Mi"
-              cpu: "200m"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"

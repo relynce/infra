@@ -22,6 +22,8 @@ spec:
             - "yes"
             - --appendfsync
             - everysec
+            - --save
+            - ""
           ports:
             - containerPort: 6379
               name: redis

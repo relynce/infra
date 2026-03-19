@@ -12,6 +12,10 @@ spec:
     name: paradedb
     major: 17
 
+  # ParadeDB image runs as UID/GID 999 (not CNPG default 26)
+  postgresUID: 999
+  postgresGID: 999
+
   postgresql:
     shared_preload_libraries:
       - pg_search

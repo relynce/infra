@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: prod
 
 resources:
+  - namespace.yaml
   - ../../base/redis
   - serviceaccount.yaml
   - secret-store.yaml

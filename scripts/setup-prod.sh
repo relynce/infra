@@ -23,12 +23,14 @@ echo "Static IP: ${IP}"
 echo "ACTION REQUIRED: Create DNS A records for app.relynce.ai and api.relynce.ai -> ${IP}"
 echo ""
 
-# 2. Create GCS buckets with versioning
+# 2. Create GCS buckets with versioning + uniform access
 echo "--- Creating GCS buckets ---"
 gsutil mb -p "${PROJECT_ID}" -l "${REGION}" gs://relynce-backups-prod/ 2>/dev/null || echo "Backup bucket exists"
 gsutil versioning set on gs://relynce-backups-prod/
+gcloud storage buckets update gs://relynce-backups-prod --uniform-bucket-level-access
 gsutil mb -p "${PROJECT_ID}" -l "${REGION}" gs://relynce-incidents-prod/ 2>/dev/null || echo "Storage bucket exists"
 gsutil versioning set on gs://relynce-incidents-prod/
+gcloud storage buckets update gs://relynce-incidents-prod --uniform-bucket-level-access
 echo ""
 
 # 3. Create namespace
@@ -36,32 +38,55 @@ echo "--- Creating namespace ---"
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 echo ""
 
-# 4. Create KSA and bind Workload Identity
-echo "--- Setting up Workload Identity ---"
-kubectl create serviceaccount "${SA_NAME}" -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-
+# 4. Create GSA and grant project-level roles
+echo "--- Setting up GCP service account ---"
 gcloud iam service-accounts describe "${GSA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
   gcloud iam service-accounts create "${SA_NAME}" --project="${PROJECT_ID}" \
     --display-name="Relynce Production"
 
-gcloud iam service-accounts add-iam-policy-binding "${GSA_EMAIL}" \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${SA_NAME}]" \
-  --project="${PROJECT_ID}"
-
+# Project-level IAM roles (unconditional — do NOT add conditions)
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${GSA_EMAIL}" \
+  --role="roles/storage.objectAdmin" \
+  --condition=None 2>/dev/null || \
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${GSA_EMAIL}" \
   --role="roles/storage.objectAdmin"
 
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${GSA_EMAIL}" \
+  --role="roles/aiplatform.user" \
+  --condition=None 2>/dev/null || \
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${GSA_EMAIL}" \
   --role="roles/aiplatform.user"
 
-kubectl annotate serviceaccount "${SA_NAME}" -n "${NAMESPACE}" \
-  iam.gke.io/gcp-service-account="${GSA_EMAIL}" --overwrite
+# Bucket-level storage access (belt + suspenders with project-level role)
+gcloud storage buckets add-iam-policy-binding gs://relynce-incidents-prod \
+  --member="serviceAccount:${GSA_EMAIL}" \
+  --role="roles/storage.objectAdmin"
+gcloud storage buckets add-iam-policy-binding gs://relynce-backups-prod \
+  --member="serviceAccount:${GSA_EMAIL}" \
+  --role="roles/storage.objectAdmin"
+
+# 5. Create KSAs and bind Workload Identity for each service
+echo "--- Setting up Workload Identity for all services ---"
+SERVICE_ACCOUNTS=("relynce" "crawler" "pipeline" "polaris")
+for ksa in "${SERVICE_ACCOUNTS[@]}"; do
+  kubectl create serviceaccount "${ksa}" -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+  gcloud iam service-accounts add-iam-policy-binding "${GSA_EMAIL}" \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${ksa}]" \
+    --project="${PROJECT_ID}"
+
+  kubectl annotate serviceaccount "${ksa}" -n "${NAMESPACE}" \
+    iam.gke.io/gcp-service-account="${GSA_EMAIL}" --overwrite
+  echo "  Bound KSA ${ksa} -> ${GSA_EMAIL}"
+done
 echo ""
 
-# 5. Create GCP Secret Manager secrets (placeholders)
+# 6. Create GCP Secret Manager secrets (placeholders)
 echo "--- Creating Secret Manager secrets ---"
 SECRETS=(
   "relynce-prod-db-user"
@@ -120,5 +145,8 @@ echo "Next steps:"
 echo "  1. Create DNS A records: app.relynce.ai -> ${IP}, api.relynce.ai -> ${IP}"
 echo "  2. Install CNPG operator: kubectl apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.25/releases/cnpg-1.25.1.yaml"
 echo "  3. Deploy infra: kubectl apply -k overlays/prod/"
-echo "  4. Bootstrap DB password (see polaris/docs/runbooks/production-deployment.md Phase 4)"
-echo "  5. Store WorkOS + Stripe live keys in Secret Manager (see runbook Phase 5)"
+echo "  4. Pre-install DB extensions as superuser (see runbook Phase 4)"
+echo "  5. Bootstrap DB passwords (see runbook Phase 5)"
+echo "  6. Store WorkOS + Stripe live keys in Secret Manager (see runbook Phase 6)"
+echo "  7. Deploy crawler + pipeline (see runbook Phase 7)"
+echo "  8. Deploy polaris (see runbook Phase 8)"

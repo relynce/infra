@@ -15,6 +15,7 @@ rendered/
 # Secrets (real ones should never be committed)
 *-secret.yaml
 !base/**/secret.yaml
+!**/external-secret.yaml
 
 # Helm
 charts/

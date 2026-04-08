@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  url: https://argocd.i.relynce.ai
+
+  # Google Workspace OIDC (direct, no Dex needed)
+  oidc.config: |
+    name: Google
+    issuer: https://accounts.google.com
+    clientID: PLACEHOLDER_REPLACE_WITH_GOOGLE_CLIENT_ID
+    clientSecret: $oidc.google.clientSecret
+    requestedScopes:
+      - openid
+      - email
+      - profile
+
+  # Argo Rollouts health check support
+  resource.customizations.health.argoproj.io_Rollout: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Degraded" and condition.status == "True" then
+            hs.status = "Degraded"
+            hs.message = condition.message
+            return hs
+          end
+        end
+      end
+      if obj.status.phase == "Healthy" then
+        hs.status = "Healthy"
+      elseif obj.status.phase == "Paused" then
+        hs.status = "Suspended"
+        hs.message = "Rollout paused"
+      else
+        hs.status = "Progressing"
+      end
+    end
+    return hs

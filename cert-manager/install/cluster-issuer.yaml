@@ -12,3 +12,4 @@ spec:
       - dns01:
           cloudDNS:
             project: incident-kb
+            hostedZoneName: i-relynce-ai-public

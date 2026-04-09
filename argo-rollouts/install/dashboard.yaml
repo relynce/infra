@@ -19,11 +19,10 @@ spec:
       serviceAccountName: argo-rollouts
       containers:
         - name: dashboard
-          image: quay.io/argoproj/argo-rollouts:v1.8.4
-          command:
-            - /bin/rollouts-controller
+          image: quay.io/argoproj/kubectl-argo-rollouts:v1.8.4
           args:
             - dashboard
+            - --port=3100
           ports:
             - containerPort: 3100
               name: http

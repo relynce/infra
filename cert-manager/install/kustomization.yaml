@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - https://github.com/cert-manager/cert-manager/releases/download/v1.17.2/cert-manager.yaml
   - cluster-issuer.yaml
+  - leader-election-rbac.yaml
 
 patches:
   # Annotate cert-manager SA for Workload Identity
@@ -16,3 +17,20 @@ patches:
         path: /metadata/annotations
         value:
           iam.gke.io/gcp-service-account: cert-manager@incident-kb.iam.gserviceaccount.com
+  # GKE Autopilot: move leader election out of kube-system
+  - target:
+      kind: Deployment
+      name: cert-manager
+      namespace: cert-manager
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --leader-election-namespace=cert-manager
+  - target:
+      kind: Deployment
+      name: cert-manager-cainjector
+      namespace: cert-manager
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --leader-election-namespace=cert-manager

@@ -23,7 +23,6 @@ spec:
           args:
             - dashboard
             - --port=3100
-            - --namespace=prod
           ports:
             - containerPort: 3100
               name: http

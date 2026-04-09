@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  # Slack notification service
+  service.slack: |
+    token: $slack-token
+  # Notification templates
+  template.app-sync-failed: |
+    slack:
+      attachments: |
+        [{
+          "title": "{{.app.metadata.name}} sync failed",
+          "text": "Application {{.app.metadata.name}} sync has failed.\n{{.app.status.operationState.message}}",
+          "color": "#E96D76"
+        }]
+  template.app-health-degraded: |
+    slack:
+      attachments: |
+        [{
+          "title": "{{.app.metadata.name}} health degraded",
+          "text": "Application {{.app.metadata.name}} health has degraded.\n{{.app.status.health.message}}",
+          "color": "#E96D76"
+        }]
+  template.app-sync-succeeded: |
+    slack:
+      attachments: |
+        [{
+          "title": "{{.app.metadata.name}} synced",
+          "text": "Application {{.app.metadata.name}} has been synced successfully.",
+          "color": "#18BE52"
+        }]
+  # Triggers
+  trigger.on-sync-failed: |
+    - when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [app-sync-failed]
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [app-health-degraded]
+  trigger.on-sync-succeeded: |
+    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      send: [app-sync-succeeded]
+  # Default subscriptions (all apps get these)
+  subscriptions: |
+    - recipients:
+        - slack:polaris-alerts
+      triggers:
+        - on-sync-failed
+        - on-health-degraded
+        - on-sync-succeeded

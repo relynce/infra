@@ -9,6 +9,7 @@ resources:
   - service-internal.yaml
   - certificate.yaml
   - external-secret.yaml
+  - secret-store.yaml
 
 patches:
   - path: argocd-cm.yaml

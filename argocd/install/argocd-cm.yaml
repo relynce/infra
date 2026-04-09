@@ -5,16 +5,17 @@ metadata:
 data:
   url: https://argocd.i.relynce.ai
 
-  # Google Workspace OIDC (direct, no Dex needed)
-  oidc.config: |
-    name: Google
-    issuer: https://accounts.google.com
-    clientID: 920238007287-10b315s7nk3ih0p4cut59jf8rl5a7t35.apps.googleusercontent.com
-    clientSecret: $oidc.google.clientSecret
-    requestedScopes:
-      - openid
-      - email
-      - profile
+  # Google Workspace OIDC via Dex
+  dex.config: |
+    connectors:
+      - type: oidc
+        id: google
+        name: Google
+        config:
+          issuer: https://accounts.google.com
+          clientID: 920238007287-10b315s7nk3ih0p4cut59jf8rl5a7t35.apps.googleusercontent.com
+          clientSecret: $dex.google.clientSecret
+          redirectURI: https://argocd.i.relynce.ai/api/dex/callback
 
   # Argo Rollouts health check support
   resource.customizations.health.argoproj.io_Rollout: |

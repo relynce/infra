@@ -84,6 +84,26 @@ for ksa in "${SERVICE_ACCOUNTS[@]}"; do
     iam.gke.io/gcp-service-account="${GSA_EMAIL}" --overwrite
   echo "  Bound KSA ${ksa} -> ${GSA_EMAIL}"
 done
+# 5b. Argo Rollouts: dedicated GSA with monitoring.viewer for canary analysis
+echo "--- Setting up Argo Rollouts service account ---"
+ARGO_GSA="argo-rollouts@${PROJECT_ID}.iam.gserviceaccount.com"
+gcloud iam service-accounts describe "${ARGO_GSA}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+  gcloud iam service-accounts create argo-rollouts --project="${PROJECT_ID}" \
+    --display-name="Argo Rollouts Analysis"
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${ARGO_GSA}" \
+  --role="roles/monitoring.viewer" \
+  --condition=None 2>/dev/null || \
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${ARGO_GSA}" \
+  --role="roles/monitoring.viewer"
+
+gcloud iam service-accounts add-iam-policy-binding "${ARGO_GSA}" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[argo-rollouts/argo-rollouts]" \
+  --project="${PROJECT_ID}"
+echo "  Bound KSA argo-rollouts/argo-rollouts -> ${ARGO_GSA}"
 echo ""
 
 # 6. Create GCP Secret Manager secrets (placeholders)

@@ -156,9 +156,54 @@ func main() {
 			Name:        pulumi.Sprintf("_dmarc.%s.", domain),
 			ManagedZone: publicZone.Name,
 			Type:        pulumi.String("TXT"),
-			Ttl:         pulumi.Int(3600),
+			Ttl:         pulumi.Int(60),
 			Rrdatas: pulumi.StringArray{
-				pulumi.Sprintf("\"v=DMARC1; p=quarantine; rua=mailto:dmarc@%s; pct=100\"", domain),
+				pulumi.String("\"v=DMARC1; p=none;\""),
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		// ---------------------------------------------------------------
+		// Resend email: DKIM verification
+		// ---------------------------------------------------------------
+		_, err = dns.NewRecordSet(ctx, "resend-dkim", &dns.RecordSetArgs{
+			Name:        pulumi.Sprintf("resend._domainkey.mail.%s.", domain),
+			ManagedZone: publicZone.Name,
+			Type:        pulumi.String("TXT"),
+			Ttl:         pulumi.Int(60),
+			Rrdatas: pulumi.StringArray{
+				pulumi.String("\"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDiCn31Bjv4LAHvi3amH9uUjnVPXVKfPXQvwW/9GfLyoDhhvfRo1t2gI7z3ibj302vv63CC4DDsMNriUvx/kaOuTrZmXTpENkRym1p4KAtQfwEIorENhrxDF/PZX6PcFbD68mVs6sDEpsUnL38ivTYo2kmO2mMhb1QHFq/S+QmMKwIDAQAB\""),
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		// ---------------------------------------------------------------
+		// Resend email: sending subdomain (send.mail) MX + SPF
+		// ---------------------------------------------------------------
+		_, err = dns.NewRecordSet(ctx, "resend-send-mx", &dns.RecordSetArgs{
+			Name:        pulumi.Sprintf("send.mail.%s.", domain),
+			ManagedZone: publicZone.Name,
+			Type:        pulumi.String("MX"),
+			Ttl:         pulumi.Int(60),
+			Rrdatas: pulumi.StringArray{
+				pulumi.String("10 feedback-smtp.us-east-1.amazonses.com."),
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		_, err = dns.NewRecordSet(ctx, "resend-send-spf", &dns.RecordSetArgs{
+			Name:        pulumi.Sprintf("send.mail.%s.", domain),
+			ManagedZone: publicZone.Name,
+			Type:        pulumi.String("TXT"),
+			Ttl:         pulumi.Int(60),
+			Rrdatas: pulumi.StringArray{
+				pulumi.String("\"v=spf1 include:amazonses.com ~all\""),
 			},
 		})
 		if err != nil {

@@ -5,7 +5,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: joseph@relynce.ai
+    email: joseph@revelara.ai
     privateKeySecretRef:
       name: letsencrypt-prod-key
     solvers:

@@ -10,3 +10,4 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - argocd.i.relynce.ai
+    - argocd.i.revelara.ai

@@ -5,6 +5,7 @@ metadata:
 data:
   policy.default: role:readonly
   policy.csv: |
-    # Relynce team members get admin access
+    # Team members get admin access (both emails until Google Workspace migrated)
     g, joseph@revelara.ai, role:admin
+    g, joseph@relynce.ai, role:admin
   scopes: '[email]'

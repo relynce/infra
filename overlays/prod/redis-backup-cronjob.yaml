@@ -11,7 +11,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: relynce
+          serviceAccountName: revelara
           containers:
             - name: redis-backup
               image: google/cloud-sdk:slim
@@ -22,6 +22,6 @@ spec:
                   apt-get update -qq && apt-get install -y -qq redis-tools > /dev/null 2>&1
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
                   redis-cli -h redis.prod.svc.cluster.local --rdb /tmp/dump.rdb
-                  gsutil cp /tmp/dump.rdb gs://relynce-backups-prod/redis/dump-${TIMESTAMP}.rdb
+                  gsutil cp /tmp/dump.rdb gs://revelara-backups-prod/redis/dump-${TIMESTAMP}.rdb
                   echo "Redis backup completed: dump-${TIMESTAMP}.rdb"
           restartPolicy: OnFailure

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: paradedb/paradedb:latest-pg17
+          image: paradedb/paradedb:0.22.1-pg17
           args:
             - postgres
             - -c
@@ -36,7 +36,7 @@ spec:
               mountPath: /docker-entrypoint-initdb.d
           resources:
             requests:
-              memory: "512SMi"
+              memory: "512Mi"
               cpu: "1000m"
             limits:
               memory: "2Gi"

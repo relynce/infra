@@ -1,0 +1,56 @@
+name: Security Suite (reusable)
+
+# Convenience orchestrator: runs SAST + SCA + DAST in one call.
+# Callers can invoke this instead of three separate workflow_calls.
+# DAST is opt-in via run-dast (default false) because it requires a target
+# URL and credentials; SAST/SCA run on every invocation.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        type: string
+        default: "1.25"
+      scan-go:
+        type: boolean
+        default: true
+      run-dast:
+        type: boolean
+        default: false
+      dast-target-url:
+        type: string
+        default: ""
+      dast-mode:
+        type: string
+        default: baseline
+    secrets:
+      dast-bearer-token:
+        required: false
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  sast:
+    uses: revelara-ai/infra/.github/workflows/sast.yml@main
+    with:
+      go-version: ${{ inputs.go-version }}
+      scan-go: ${{ inputs.scan-go }}
+
+  sca:
+    uses: revelara-ai/infra/.github/workflows/sca.yml@main
+    with:
+      go-version: ${{ inputs.go-version }}
+      scan-go: ${{ inputs.scan-go }}
+
+  dast:
+    if: inputs.run-dast && inputs.dast-target-url != ''
+    uses: revelara-ai/infra/.github/workflows/dast.yml@main
+    with:
+      target_url: ${{ inputs.dast-target-url }}
+      mode: ${{ inputs.dast-mode }}
+    secrets:
+      bearer_token: ${{ secrets.dast-bearer-token }}

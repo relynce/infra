@@ -1,0 +1,93 @@
+name: DAST (reusable)
+
+# Dynamic Application Security Testing with OWASP ZAP.
+# Authenticates by injecting a Bearer token (caller mints it) into every
+# request via ZAP's HTTP-replacer. Caller obtains the token in a prior step
+# and passes it via the bearer_token secret.
+#
+# Auth model rationale: ZAP form-auth/script-auth is brittle for WorkOS SSO
+# flows. A short-lived JWT minted from a test account before the scan keeps
+# ZAP itself stateless and survives auth-stack changes.
+
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        description: "Base URL to scan (e.g. https://dev.revelara.ai)"
+        type: string
+        required: true
+      mode:
+        description: "baseline (passive, fast) or full (active, slower)"
+        type: string
+        default: baseline
+      fail_on_warn:
+        description: "Fail the job on ZAP warnings (gate strictness)"
+        type: boolean
+        default: false
+    secrets:
+      bearer_token:
+        description: "JWT for authenticated scan; omit for unauthenticated"
+        required: false
+
+permissions:
+  contents: read
+  issues: write           # ZAP action posts findings as issues by default
+  pull-requests: write    # and as PR comments
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate inputs
+        run: |
+          if [ "${{ inputs.mode }}" != "baseline" ] && [ "${{ inputs.mode }}" != "full" ]; then
+            echo "::error::mode must be 'baseline' or 'full'"
+            exit 1
+          fi
+
+      - name: Build ZAP cmd_options
+        id: cmd
+        env:
+          TOKEN: ${{ secrets.bearer_token }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "::add-mask::$TOKEN"
+            # ZAP HTTP-replacer rule: inject Authorization on every outbound
+            # request. Index 0; matchtype REQ_HEADER; not regex; replacement
+            # is the literal "Bearer <token>".
+            cat > /tmp/zap-options.txt <<EOF
+          -z "-config replacer.full_list(0).description=auth \
+              -config replacer.full_list(0).enabled=true \
+              -config replacer.full_list(0).matchtype=REQ_HEADER \
+              -config replacer.full_list(0).matchstr=Authorization \
+              -config replacer.full_list(0).regex=false \
+              -config replacer.full_list(0).replacement=Bearer $TOKEN"
+          EOF
+            OPTS=$(cat /tmp/zap-options.txt | tr '\n' ' ')
+            echo "options=$OPTS" >> $GITHUB_OUTPUT
+            echo "authenticated=true" >> $GITHUB_OUTPUT
+          else
+            echo "options=" >> $GITHUB_OUTPUT
+            echo "authenticated=false" >> $GITHUB_OUTPUT
+            echo "::warning::No bearer_token provided -- running unauthenticated DAST"
+          fi
+
+      - name: ZAP baseline scan
+        if: inputs.mode == 'baseline'
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: ${{ inputs.target_url }}
+          cmd_options: ${{ steps.cmd.outputs.options }}
+          fail_action: ${{ inputs.fail_on_warn }}
+          allow_issue_writing: false
+
+      - name: ZAP full scan
+        if: inputs.mode == 'full'
+        uses: zaproxy/action-full-scan@v0.12.0
+        with:
+          target: ${{ inputs.target_url }}
+          cmd_options: ${{ steps.cmd.outputs.options }}
+          fail_action: ${{ inputs.fail_on_warn }}
+          allow_issue_writing: false

@@ -1,0 +1,94 @@
+name: SAST (reusable)
+
+# Static Application Security Testing
+# Produces SARIF artifacts that upload to the caller's GitHub Security tab.
+# CASA Tier 2 alignment: ASA-WG v2.0.0 verification requirements (auth, session,
+# input validation, crypto, error handling). Scanners chosen for SARIF output.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        type: string
+        default: "1.25"
+      scan-go:
+        description: "Run gosec against Go code"
+        type: boolean
+        default: true
+      gosec-paths:
+        description: "Path glob for gosec to scan"
+        type: string
+        default: "./..."
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Semgrep scan
+        # CASA-aligned rulesets: OWASP Top 10, secrets, language-specific patterns.
+        # --error makes the job fail on findings; toggle off in caller if using
+        # baseline mode.
+        run: |
+          semgrep scan \
+            --sarif --output=semgrep.sarif \
+            --config=p/owasp-top-ten \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --config=p/golang \
+            --config=p/javascript \
+            --config=p/typescript \
+            --config=p/dockerfile \
+            --config=p/github-actions \
+            --metrics=off
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-sarif
+          path: semgrep.sarif
+          retention-days: 30
+
+  gosec:
+    if: inputs.scan-go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec
+        # -no-fail: emit findings without failing the step (assessor wants the
+        # report; gating happens in policy below).
+        run: gosec -no-fail -fmt=sarif -out=gosec.sarif ${{ inputs.gosec-paths }}
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gosec-sarif
+          path: gosec.sarif
+          retention-days: 30

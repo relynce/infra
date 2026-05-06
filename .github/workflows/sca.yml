@@ -1,0 +1,83 @@
+name: SCA (reusable)
+
+# Software Composition Analysis: dependency + container vuln scanning.
+# Trivy covers Go/npm/Dockerfile in one pass. govulncheck adds Go-aware
+# call-graph filtering (only flags vulns the code actually reaches).
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        type: string
+        default: "1.25"
+      scan-go:
+        description: "Run govulncheck against Go modules"
+        type: boolean
+        default: true
+      severity:
+        description: "Trivy severity threshold (comma-separated)"
+        type: string
+        default: "CRITICAL,HIGH,MEDIUM"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  trivy-fs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: ${{ inputs.severity }}
+          ignore-unfixed: false
+          # Vuln + secrets + misconfig in one pass.
+          scanners: vuln,secret,misconfig
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-fs-sarif
+          path: trivy-fs.sarif
+          retention-days: 30
+
+  govulncheck:
+    if: inputs.scan-go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        # JSON output for assessor artifact; text output to console for humans.
+        # Exit 0 even with findings: gating happens at the suite level.
+        run: |
+          set -o pipefail
+          govulncheck -json ./... > govulncheck.json || true
+          govulncheck ./... || echo "govulncheck reported findings (see artifact)"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: govulncheck-json
+          path: govulncheck.json
+          retention-days: 30

@@ -1,13 +1,17 @@
 name: DAST (reusable)
 
 # Dynamic Application Security Testing with OWASP ZAP.
-# Authenticates by injecting a Bearer token (caller mints it) into every
-# request via ZAP's HTTP-replacer. Caller obtains the token in a prior step
-# and passes it via the bearer_token secret.
+# Authenticates via ZAP's native env-var support: ZAP_AUTH_HEADER,
+# ZAP_AUTH_HEADER_VALUE, ZAP_AUTH_HEADER_SITE. zap-baseline.py /
+# zap-full-scan.py read these and add a replacer rule that injects the
+# header on every outbound request to the target site. The action-baseline
+# Dockerfile already declares -e for these three vars; setting them on the
+# step propagates them into the container.
 #
-# Auth model rationale: ZAP form-auth/script-auth is brittle for WorkOS SSO
-# flows. A short-lived JWT minted from a test account before the scan keeps
-# ZAP itself stateless and survives auth-stack changes.
+# Earlier attempt used cmd_options="-z '-config replacer...'" but YAML
+# interpolation drops the inner quotes, so docker tokenized "-z" alone and
+# fed the rest to ZAP as positional args, exiting with "File not found".
+# Env-var auth sidesteps the quoting hazard entirely.
 
 on:
   workflow_call:
@@ -26,7 +30,7 @@ on:
         default: false
     secrets:
       bearer_token:
-        description: "JWT for authenticated scan; omit for unauthenticated"
+        description: "Token for authenticated scan; omit for unauthenticated"
         required: false
 
 permissions:
@@ -47,30 +51,21 @@ jobs:
             exit 1
           fi
 
-      - name: Build ZAP cmd_options
-        id: cmd
+      - name: Resolve auth env
+        id: auth
         env:
           TOKEN: ${{ secrets.bearer_token }}
+          TARGET: ${{ inputs.target_url }}
         run: |
           if [ -n "$TOKEN" ]; then
             echo "::add-mask::$TOKEN"
-            # ZAP HTTP-replacer rule: inject Authorization on every outbound
-            # request. Index 0; matchtype REQ_HEADER; not regex; replacement
-            # is the literal "Bearer <token>".
-            cat > /tmp/zap-options.txt <<EOF
-          -z "-config replacer.full_list(0).description=auth \
-              -config replacer.full_list(0).enabled=true \
-              -config replacer.full_list(0).matchtype=REQ_HEADER \
-              -config replacer.full_list(0).matchstr=Authorization \
-              -config replacer.full_list(0).regex=false \
-              -config replacer.full_list(0).replacement=Bearer $TOKEN"
-          EOF
-            OPTS=$(cat /tmp/zap-options.txt | tr '\n' ' ')
-            echo "options=$OPTS" >> $GITHUB_OUTPUT
-            echo "authenticated=true" >> $GITHUB_OUTPUT
+            SITE=$(printf "%s" "$TARGET" | sed -E 's|^https?://([^/]+).*|\1|')
+            echo "ZAP_AUTH_HEADER=Authorization" >> "$GITHUB_ENV"
+            echo "ZAP_AUTH_HEADER_VALUE=Bearer $TOKEN" >> "$GITHUB_ENV"
+            echo "ZAP_AUTH_HEADER_SITE=$SITE" >> "$GITHUB_ENV"
+            echo "authenticated=true" >> "$GITHUB_OUTPUT"
           else
-            echo "options=" >> $GITHUB_OUTPUT
-            echo "authenticated=false" >> $GITHUB_OUTPUT
+            echo "authenticated=false" >> "$GITHUB_OUTPUT"
             echo "::warning::No bearer_token provided -- running unauthenticated DAST"
           fi
 
@@ -79,7 +74,6 @@ jobs:
         uses: zaproxy/action-baseline@v0.15.0
         with:
           target: ${{ inputs.target_url }}
-          cmd_options: ${{ steps.cmd.outputs.options }}
           fail_action: ${{ inputs.fail_on_warn }}
           allow_issue_writing: false
 
@@ -88,6 +82,5 @@ jobs:
         uses: zaproxy/action-full-scan@v0.13.0
         with:
           target: ${{ inputs.target_url }}
-          cmd_options: ${{ steps.cmd.outputs.options }}
           fail_action: ${{ inputs.fail_on_warn }}
           allow_issue_writing: false
